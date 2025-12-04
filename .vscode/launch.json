@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": ".NET 9 WinForms Launch (TilesetEditor)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/TilesetEditor/bin/Debug/net9.0-windows/TilesetEditor.dll",
+            "cwd": "${workspaceFolder}/TilesetEditor",
+            "console": "externalTerminal",    // خروجی در کنسول جداگانه
+            "stopAtEntry": false,
+            "justMyCode": true,
+            "symbolOptions": {
+                "searchMicrosoftSymbolServer": false,
+                "searchNuGetSymbolServer": false
+            }
+        },
+        {
+            "name": ".NET Core Attach",
+            "type": "coreclr",
+            "request": "attach"
+        }
+    ]
+}
