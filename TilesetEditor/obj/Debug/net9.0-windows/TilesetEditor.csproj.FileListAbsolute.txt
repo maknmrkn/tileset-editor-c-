@@ -12,3 +12,4 @@ F:\tile rotitor\tileset editor c#\TilesetEditor\obj\Debug\net9.0-windows\refint\
 F:\tile rotitor\tileset editor c#\TilesetEditor\obj\Debug\net9.0-windows\TilesetEditor.pdb
 F:\tile rotitor\tileset editor c#\TilesetEditor\obj\Debug\net9.0-windows\TilesetEditor.genruntimeconfig.cache
 F:\tile rotitor\tileset editor c#\TilesetEditor\obj\Debug\net9.0-windows\ref\TilesetEditor.dll
+F:\tile rotitor\tileset editor c#\TilesetEditor\obj\Debug\net9.0-windows\TilesetEditor.sourcelink.json

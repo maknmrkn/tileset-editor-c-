@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TilesetEditor")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dfdb2e59fc6d0f5ab3ba7c4594dd930cf152d666")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1cdc4afee6652357b49f3115996707a16ef4395d")]
 [assembly: System.Reflection.AssemblyProductAttribute("TilesetEditor")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TilesetEditor")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
