@@ -17,7 +17,7 @@ namespace TilesetEditor
 
         // constants
         private readonly int TilePadding = 0;
-        private readonly int ToolbarHeight = 96; // top panel height
+        private int ToolbarHeight => panelTop?.Height ?? 48;
 
         // drag state
         bool isDragging = false;
