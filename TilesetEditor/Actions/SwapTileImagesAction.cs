@@ -21,8 +21,8 @@ namespace TilesetEditor.Actions
 
             var ta = tileSet.ExtractTileBitmap(a);
             var tb = tileSet.ExtractTileBitmap(b);
-            aBmp = ta != null ? new Bitmap(ta) : new Bitmap(aRect.Width, aRect.Height);
-            bBmp = tb != null ? new Bitmap(tb) : new Bitmap(bRect.Width, bRect.Height);
+            aBmp = ta != null ? new Bitmap(ta) : new Bitmap(Math.Max(1, aRect.Width), Math.Max(1, aRect.Height));
+            bBmp = tb != null ? new Bitmap(tb) : new Bitmap(Math.Max(1, bRect.Width), Math.Max(1, bRect.Height));
         }
 
         public void Do()

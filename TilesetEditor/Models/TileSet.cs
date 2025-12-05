@@ -1,3 +1,4 @@
+using System;
 using System.Drawing;
 using System.Collections.Generic;
 using System.Drawing.Imaging;
@@ -13,66 +14,78 @@ namespace TilesetEditor.Models
     public class TileSet
     {
         public Bitmap? Image { get; set; }
-        public int TileWidth { get; set; } = 32;
-        public int TileHeight { get; set; } = 32;
-        public List<Tile> Tiles { get; } = new();
 
-        // اگر GridCols/GridRows صفر باشند، از اندازهٔ تصویر محاسبه می‌شود
+        // Grid definition: number of columns and rows (grid size)
+        // If zero, derived from image (default fallback)
         public int GridCols { get; set; } = 0;
         public int GridRows { get; set; } = 0;
 
-        public int Columns => (GridCols > 0) ? GridCols : (Image != null && TileWidth > 0 ? Image.Width / TileWidth : 0);
-        public int Rows => (GridRows > 0) ? GridRows : (Image != null && TileHeight > 0 ? Image.Height / TileHeight : 0);
+        public List<Tile> Tiles { get; } = new();
+
+        public int Columns => (GridCols > 0) ? GridCols : (Image != null ? Math.Max(1, Image.Width / 32) : 0);
+        public int Rows => (GridRows > 0) ? GridRows : (Image != null ? Math.Max(1, Image.Height / 32) : 0);
 
         public void RebuildTiles()
         {
             Tiles.Clear();
-            if (TileWidth <= 0 || TileHeight <= 0) return;
+            if (Columns <= 0 || Rows <= 0) return;
 
-            int cols = Columns;
-            int rows = Rows;
-            if (cols <= 0 || rows <= 0) return;
-
-            for (int y = 0; y < rows; y++)
+            if (Image == null)
             {
-                for (int x = 0; x < cols; x++)
+                // create empty tiles (all empty)
+                for (int r = 0; r < Rows; r++)
+                    for (int c = 0; c < Columns; c++)
+                        Tiles.Add(new Tile(new Rectangle(0, 0, 0, 0)));
+                return;
+            }
+
+            // compute floating cell size so we can map grid to image area
+            float cellW = (float)Image.Width / Columns;
+            float cellH = (float)Image.Height / Rows;
+
+            for (int r = 0; r < Rows; r++)
+            {
+                for (int c = 0; c < Columns; c++)
                 {
-                    // محاسبهٔ مستطیل منبع بر اساس مختصات در تصویر
-                    var srcRect = new Rectangle(x * TileWidth, y * TileHeight, TileWidth, TileHeight);
-                    Tiles.Add(new Tile(srcRect));
+                    int sx = (int)Math.Round(c * cellW);
+                    int sy = (int)Math.Round(r * cellH);
+                    int sw = (int)Math.Ceiling((c + 1) * cellW) - sx;
+                    int sh = (int)Math.Ceiling((r + 1) * cellH) - sy;
+
+                    // If the computed source rect is outside image bounds, mark as empty rect
+                    if (sx >= Image.Width || sy >= Image.Height || sw <= 0 || sh <= 0)
+                    {
+                        Tiles.Add(new Tile(new Rectangle(0, 0, 0, 0)));
+                    }
+                    else
+                    {
+                        // clamp width/height to image bounds
+                        sw = Math.Min(sw, Image.Width - sx);
+                        sh = Math.Min(sh, Image.Height - sy);
+                        Tiles.Add(new Tile(new Rectangle(sx, sy, sw, sh)));
+                    }
                 }
             }
         }
 
-        public Bitmap? ExtractTileBitmap(int index)
+        public Bitmap ExtractTileBitmap(int index)
         {
-            if (Image == null) return null;
-            if (index < 0 || index >= Tiles.Count) return null;
-
+            if (index < 0 || index >= Tiles.Count) return new Bitmap(1, 1, PixelFormat.Format32bppArgb);
             var rect = Tiles[index].SourceRect;
 
-            // اگر مستطیل کاملاً خارج از تصویر باشد، یک بیتی‌مپ خالی برگردان
-            if (rect.X >= Image.Width || rect.Y >= Image.Height) 
+            // If no image or rect empty -> return transparent bitmap sized to logical cell (use 1x1 fallback)
+            if (Image == null || rect.Width <= 0 || rect.Height <= 0)
             {
-                var empty = new Bitmap(rect.Width, rect.Height, PixelFormat.Format32bppArgb);
+                var empty = new Bitmap(Math.Max(1, rect.Width), Math.Max(1, rect.Height), PixelFormat.Format32bppArgb);
                 using (var g = Graphics.FromImage(empty)) g.Clear(Color.Transparent);
                 return empty;
             }
 
-            // محدود کردن مستطیل به محدودهٔ تصویر (برای لبه‌های ناقص)
-            int w = Math.Min(rect.Width, Math.Max(0, Image.Width - rect.X));
-            int h = Math.Min(rect.Height, Math.Max(0, Image.Height - rect.Y));
             var bmp = new Bitmap(rect.Width, rect.Height, PixelFormat.Format32bppArgb);
             using (var g = Graphics.FromImage(bmp))
             {
-                // ابتدا شفاف کن
                 g.Clear(Color.Transparent);
-                if (w > 0 && h > 0)
-                {
-                    var src = new Rectangle(rect.X, rect.Y, w, h);
-                    var dest = new Rectangle(0, 0, w, h);
-                    g.DrawImage(Image, dest, src, GraphicsUnit.Pixel);
-                }
+                g.DrawImage(Image, new Rectangle(0, 0, rect.Width, rect.Height), rect, GraphicsUnit.Pixel);
             }
             return bmp;
         }

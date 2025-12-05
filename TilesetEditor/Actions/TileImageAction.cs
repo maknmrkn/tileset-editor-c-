@@ -18,7 +18,7 @@ namespace TilesetEditor.Actions
 
             destRect = tileSet.Tiles[index].SourceRect;
             var b = tileSet.ExtractTileBitmap(index);
-            before = b != null ? new Bitmap(b) : new Bitmap(destRect.Width, destRect.Height);
+            before = b != null ? new Bitmap(b) : new Bitmap(Math.Max(1, destRect.Width), Math.Max(1, destRect.Height));
             after = new Bitmap(newBitmap);
         }
 
