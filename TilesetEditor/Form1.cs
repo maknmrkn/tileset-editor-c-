@@ -1,4 +1,4 @@
-#nullable disable
+#nullable enable
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -28,7 +28,7 @@ namespace TilesetEditor
 
         // drag state
         bool isDragging = false;
-        Bitmap dragBitmap = null;
+        Bitmap? dragBitmap = null;
         int dragIndex = -1;
         Point lastMouse = Point.Empty;
 
@@ -41,7 +41,7 @@ namespace TilesetEditor
         bool ignoreNextDoubleClick = false;
 
         // clipboard
-        Bitmap clipboardBitmap = null;
+        Bitmap? clipboardBitmap = null;
         int clipboardIndex = -1;
 
         // context
@@ -73,6 +73,7 @@ namespace TilesetEditor
             // wire menu items and controls
             miLoad.Click += MiLoad_Click;
             miSave.Click += MiSave_Click;
+            miSaveAs.Click += MiSaveAs_Click;
             miExit.Click += (s, e) => Close();
 
             miUndo.Click += (s, e) => DoUndo();
@@ -89,6 +90,7 @@ namespace TilesetEditor
             // right panel controls
             btnLoad.Click += BtnLoad_Click;
             btnSave.Click += BtnSave_Click;
+            btnSaveAs.Click += BtnSaveAs_Click;
             btnUndo.Click += (s, e) => DoUndo();
             btnRedo.Click += (s, e) => DoRedo();
 
@@ -98,14 +100,13 @@ namespace TilesetEditor
             btnAddRow.Click += (s, e) => AddRow();
             btnRemoveRow.Click += (s, e) => RemoveRow();
 
-            // numeric fields represent counts (cols/rows) but are enabled only when preset == Custom
-            numGridCols.Minimum = 1;
-            numGridRows.Minimum = 1;
-            numGridCols.Maximum = 10000;
-            numGridRows.Maximum = 10000;
-
-            numGridCols.ValueChanged += (s, e) => { if (IsPresetCustom()) { tileSet.GridCols = (int)numGridCols.Value; isSliced = false; UpdateDisplayAndInvalidate(); } };
-            numGridRows.ValueChanged += (s, e) => { if (IsPresetCustom()) { tileSet.GridRows = (int)numGridRows.Value; isSliced = false; UpdateDisplayAndInvalidate(); } };
+            // tile size numeric fields (pixel sizes)
+            numTileW.Minimum = 1;
+            numTileH.Minimum = 1;
+            numTileW.Maximum = 4096;
+            numTileH.Maximum = 4096;
+            numTileW.ValueChanged += (s, e) => { if (IsPresetCustom()) { tileSet.TileWidth = (int)numTileW.Value; tileSet.GridCols = 0; isSliced = false; UpdateDisplayAndInvalidate(); } };
+            numTileH.ValueChanged += (s, e) => { if (IsPresetCustom()) { tileSet.TileHeight = (int)numTileH.Value; tileSet.GridRows = 0; isSliced = false; UpdateDisplayAndInvalidate(); } };
 
             cbPresetSize.SelectedIndexChanged += (s, e) => { OnPresetChanged(); };
 
@@ -118,6 +119,7 @@ namespace TilesetEditor
 
             // context menu actions
             miCopy.Click += MiCopy_Click;
+            miCut.Click += MiCut_Click;
             miPaste.Click += MiPaste_Click;
             miRotate.Click += MiRotate_Click;
             miFlip.Click += MiFlip_Click;
@@ -146,56 +148,47 @@ namespace TilesetEditor
         #region Helpers for preset/custom
         private bool IsPresetCustom() => string.Equals(cbPresetSize.Text, "Custom", StringComparison.OrdinalIgnoreCase);
 
-private void OnPresetChanged()
-{
-    // If preset is Custom -> enable numeric fields for manual counts
-    bool custom = IsPresetCustom();
-    numGridCols.Enabled = custom;
-    numGridRows.Enabled = custom;
-
-    // If not custom, set numeric fields to match preset-derived counts (but keep them disabled)
-    if (!custom && tileSet.Image != null && int.TryParse(cbPresetSize.Text, out int presetVal))
-    {
-        int desiredCols = Math.Max(1, tileSet.Image.Width / presetVal);
-        int desiredRows = Math.Max(1, tileSet.Image.Height / presetVal);
-
-        // ensure numeric up/down can accept the value
-        numGridCols.Minimum = 1;
-        numGridRows.Minimum = 1;
-        numGridCols.Maximum = Math.Max(numGridCols.Maximum, desiredCols);
-        numGridRows.Maximum = Math.Max(numGridRows.Maximum, desiredRows);
-
-        numGridCols.Value = Math.Min(numGridCols.Maximum, Math.Max(numGridCols.Minimum, desiredCols));
-        numGridRows.Value = Math.Min(numGridRows.Maximum, Math.Max(numGridRows.Minimum, desiredRows));
-
-        // update tileSet tile size to preset (but do not mark sliced yet)
-        tileSet.TileWidth = presetVal;
-        tileSet.TileHeight = presetVal;
-        tileSet.GridCols = 0;
-        tileSet.GridRows = 0;
-    }
-    else if (custom)
-    {
-        // when switching to custom, initialize tile size from current preset if possible
-        if (int.TryParse(cbPresetSize.Text, out int presetFromCombo))
+        private void OnPresetChanged()
         {
-            tileSet.TileWidth = presetFromCombo;
-            tileSet.TileHeight = presetFromCombo;
+            bool custom = IsPresetCustom();
+
+            // enable tile size fields only when Custom
+            numTileW.Enabled = custom;
+            numTileH.Enabled = custom;
+
+            if (!custom && tileSet.Image != null && int.TryParse(cbPresetSize.Text, out int presetVal))
+            {
+                // preset selected: set tile size and update tile size numeric controls (disabled)
+                tileSet.TileWidth = presetVal;
+                tileSet.TileHeight = presetVal;
+
+                // update numeric displays (but disabled)
+                numTileW.Value = Math.Min(numTileW.Maximum, Math.Max(numTileW.Minimum, presetVal));
+                numTileH.Value = Math.Min(numTileH.Maximum, Math.Max(numTileH.Minimum, presetVal));
+
+                // ensure GridCols/GridRows are derived from tile size
+                tileSet.GridCols = 0;
+                tileSet.GridRows = 0;
+            }
+            else if (custom)
+            {
+                // switching to custom: initialize tile size numeric from current tileSet values
+                if (tileSet.TileWidth > 0) numTileW.Value = Math.Min(numTileW.Maximum, Math.Max(numTileW.Minimum, tileSet.TileWidth));
+                if (tileSet.TileHeight > 0) numTileH.Value = Math.Min(numTileH.Maximum, Math.Max(numTileH.Minimum, tileSet.TileHeight));
+                // keep GridCols/GridRows zero so Columns/Rows are derived from TileWidth/TileHeight
+                tileSet.GridCols = 0;
+                tileSet.GridRows = 0;
+            }
+
+            isSliced = false;
+            UpdateDisplayAndInvalidate();
         }
-        // GridCols/GridRows remain controlled by numeric fields
-        tileSet.GridCols = (int)numGridCols.Value;
-        tileSet.GridRows = (int)numGridRows.Value;
-    }
-
-    isSliced = false;
-    UpdateDisplayAndInvalidate();
-}
-
         #endregion
 
         #region File / Edit / Help handlers
-        private void MiLoad_Click(object sender, EventArgs e) => BtnLoad_Click(sender, e);
-        private void MiSave_Click(object sender, EventArgs e) => BtnSave_Click(sender, e);
+        private void MiLoad_Click(object? sender, EventArgs e) => BtnLoad_Click(sender, e);
+        private void MiSave_Click(object? sender, EventArgs e) => BtnSave_Click(sender, e);
+        private void MiSaveAs_Click(object? sender, EventArgs e) => BtnSaveAs_Click(sender, e);
 
         private void DoUndo()
         {
@@ -215,7 +208,7 @@ private void OnPresetChanged()
 
         private void ShowUsage()
         {
-            MessageBox.Show("Usage:\n1. File -> Load Tileset\n2. Choose preset or Custom\n3. Preview and Apply Grid\n4. Add columns/rows if needed, paste/edit tiles into empty space\n5. Save final image", "Usage Guide");
+            MessageBox.Show("Usage:\n1. File -> Load Tileset\n2. Choose preset or Custom (Tile W/H)\n3. Preview and Apply Grid\n4. Add columns/rows if needed, paste/edit tiles into empty space\n5. Save final image", "Usage Guide");
         }
 
         private void ShowHotkeys()
@@ -230,7 +223,7 @@ private void OnPresetChanged()
         #endregion
 
         #region Load / Save / Paths / Dirty
-        private void BtnLoad_Click(object sender, EventArgs e)
+        private void BtnLoad_Click(object? sender, EventArgs e)
         {
             if (isDirty)
             {
@@ -246,34 +239,23 @@ private void OnPresetChanged()
             lastLoadPath = Path.GetDirectoryName(ofd.FileName) ?? lastLoadPath;
             lastSavePath = lastLoadPath;
 
-            // initialize preset/custom UI
-// initialize preset/custom UI
+            // initialize tile size fields based on preset or fallback
             if (!IsPresetCustom() && int.TryParse(cbPresetSize.Text, out int presetVal))
             {
-                // set tile size to preset and update numeric fields (disabled)
                 tileSet.TileWidth = presetVal;
                 tileSet.TileHeight = presetVal;
-
-                int desiredCols = Math.Max(1, tileSet.Image.Width / presetVal);
-                int desiredRows = Math.Max(1, tileSet.Image.Height / presetVal);
-
-                numGridCols.Minimum = 1;
-                numGridRows.Minimum = 1;
-                numGridCols.Maximum = Math.Max(numGridCols.Maximum, desiredCols);
-                numGridRows.Maximum = Math.Max(numGridRows.Maximum, desiredRows);
-
-                numGridCols.Value = desiredCols;
-                numGridRows.Value = desiredRows;
+                numTileW.Value = Math.Min(numTileW.Maximum, Math.Max(numTileW.Minimum, presetVal));
+                numTileH.Value = Math.Min(numTileH.Maximum, Math.Max(numTileH.Minimum, presetVal));
             }
             else
             {
-                // custom mode or fallback
-                tileSet.TileWidth = GetPresetBaseCell();
-                tileSet.TileHeight = GetPresetBaseCell();
-                numGridCols.Value = Math.Max(1, tileSet.Image.Width / tileSet.TileWidth);
-                numGridRows.Value = Math.Max(1, tileSet.Image.Height / tileSet.TileHeight);
+                // custom or fallback
+                int baseCell = GetPresetBaseCell();
+                tileSet.TileWidth = baseCell;
+                tileSet.TileHeight = baseCell;
+                numTileW.Value = Math.Min(numTileW.Maximum, Math.Max(numTileW.Minimum, baseCell));
+                numTileH.Value = Math.Min(numTileH.Maximum, Math.Max(numTileH.Minimum, baseCell));
             }
-
 
             undo.Clear();
             isDirty = false;
@@ -284,7 +266,32 @@ private void OnPresetChanged()
             UpdateStatus("Tileset loaded");
         }
 
-        private void BtnSave_Click(object sender, EventArgs e)
+        private void BtnSave_Click(object? sender, EventArgs e)
+        {
+            if (tileSet.Image == null) { MessageBox.Show("No tileset to save."); return; }
+
+            if (isDirty)
+            {
+                var r = MessageBox.Show("There are unsaved changes. Save now?", "Save", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (r == DialogResult.Cancel) return;
+                if (r == DialogResult.No) return;
+            }
+
+            using var sfd = new SaveFileDialog { Filter = "PNG Image|*.png|JPEG Image|*.jpg;*.jpeg|Bitmap|*.bmp", InitialDirectory = lastSavePath, FileName = "tileset.png" };
+            if (sfd.ShowDialog() != DialogResult.OK) return;
+
+            var ext = Path.GetExtension(sfd.FileName).ToLowerInvariant();
+            ImageFormat fmt = ImageFormat.Png;
+            if (ext == ".jpg" || ext == ".jpeg") fmt = ImageFormat.Jpeg;
+            else if (ext == ".bmp") fmt = ImageFormat.Bmp;
+
+            tileSet.Image.Save(sfd.FileName, fmt);
+            lastSavePath = Path.GetDirectoryName(sfd.FileName) ?? lastSavePath;
+            isDirty = false;
+            UpdateStatus($"Saved: {Path.GetFileName(sfd.FileName)}");
+        }
+
+        private void BtnSaveAs_Click(object? sender, EventArgs e)
         {
             if (tileSet.Image == null) { MessageBox.Show("No tileset to save."); return; }
 
@@ -296,26 +303,23 @@ private void OnPresetChanged()
             if (ext == ".jpg" || ext == ".jpeg") fmt = ImageFormat.Jpeg;
             else if (ext == ".bmp") fmt = ImageFormat.Bmp;
 
-            // Save the current (possibly expanded and edited) image
             tileSet.Image.Save(sfd.FileName, fmt);
             lastSavePath = Path.GetDirectoryName(sfd.FileName) ?? lastSavePath;
             isDirty = false;
-            UpdateStatus($"Saved: {Path.GetFileName(sfd.FileName)}");
+            UpdateStatus($"Saved As: {Path.GetFileName(sfd.FileName)}");
         }
         #endregion
 
-        #region Grid controls (cols/rows +/- and Apply)
+        #region Grid controls (Add/Remove and Apply)
         private void AddColumn()
         {
             int currentCols = Math.Max(1, tileSet.Columns);
             int newCols = currentCols + 1;
             int currentRows = Math.Max(1, tileSet.Rows);
 
-            // create action that will perform resize and canvas expansion
             var action = new Actions.GridResizeAction(tileSet, currentCols, currentRows, newCols, currentRows);
             undo.Do(action);
 
-            // After action applied, ensure tiles and UI updated
             tileSet.RebuildTiles();
             isSliced = true;
             UpdateScrollSize();
@@ -377,19 +381,20 @@ private void OnPresetChanged()
 
         private void ApplyGridButton()
         {
-            // If preset is not custom, set tile size from preset
-            if (!IsPresetCustom() && int.TryParse(cbPresetSize.Text, out int preset))
+            if (!IsPresetCustom() && int.TryParse(cbPresetSize.Text, out int presetVal))
             {
-                tileSet.TileWidth = preset;
-                tileSet.TileHeight = preset;
+                tileSet.TileWidth = presetVal;
+                tileSet.TileHeight = presetVal;
                 tileSet.GridCols = 0;
                 tileSet.GridRows = 0;
             }
             else
             {
-                // custom: tile size remains as set, counts come from numeric fields
-                tileSet.GridCols = (int)numGridCols.Value;
-                tileSet.GridRows = (int)numGridRows.Value;
+                // Custom: tile size comes from numTileW/numTileH (pixel sizes)
+                tileSet.TileWidth = (int)numTileW.Value;
+                tileSet.TileHeight = (int)numTileH.Value;
+                tileSet.GridCols = 0;
+                tileSet.GridRows = 0;
             }
 
             // Ensure canvas can contain the grid (pads if necessary)
@@ -412,7 +417,7 @@ private void OnPresetChanged()
             return 32;
         }
 
-        private void TrackZoom_Scroll(object sender, EventArgs e)
+        private void TrackZoom_Scroll(object? sender, EventArgs e)
         {
             zoomPercent = trackZoom.Value;
             panelTileset.Invalidate();
@@ -455,24 +460,15 @@ private void OnPresetChanged()
 
         private void UpdateDisplayAndInvalidate()
         {
-            // When preset changes (and not custom), update preview cols/rows and tile size
-            if (!IsPresetCustom() && tileSet.Image != null && int.TryParse(cbPresetSize.Text, out int preset))
+            if (!IsPresetCustom() && tileSet.Image != null && int.TryParse(cbPresetSize.Text, out int presetVal))
             {
-                tileSet.TileWidth = preset;
-                tileSet.TileHeight = preset;
+                tileSet.TileWidth = presetVal;
+                tileSet.TileHeight = presetVal;
 
-                int desiredCols = Math.Max(1, tileSet.Image.Width / preset);
-                int desiredRows = Math.Max(1, tileSet.Image.Height / preset);
+                // update numeric displays (tile pixel sizes)
+                numTileW.Value = Math.Min(numTileW.Maximum, Math.Max(numTileW.Minimum, presetVal));
+                numTileH.Value = Math.Min(numTileH.Maximum, Math.Max(numTileH.Minimum, presetVal));
 
-                numGridCols.Minimum = 1;
-                numGridRows.Minimum = 1;
-                numGridCols.Maximum = Math.Max(numGridCols.Maximum, desiredCols);
-                numGridRows.Maximum = Math.Max(numGridRows.Maximum, desiredRows);
-
-                numGridCols.Value = Math.Min(numGridCols.Maximum, Math.Max(numGridCols.Minimum, desiredCols));
-                numGridRows.Value = Math.Min(numGridRows.Maximum, Math.Max(numGridRows.Minimum, desiredRows));
-
-                // keep GridCols/GridRows zero so Columns/Rows are derived from TileWidth/TileHeight
                 tileSet.GridCols = 0;
                 tileSet.GridRows = 0;
             }
@@ -489,7 +485,6 @@ private void OnPresetChanged()
             int cols = Math.Max(1, tileSet.Columns);
             int rows = Math.Max(1, tileSet.Rows);
 
-            // base tile size (px) - prefer preset tile size if available
             float tileW = tileSet.TileWidth > 0 ? tileSet.TileWidth : GetPresetBaseCell();
             float tileH = tileSet.TileHeight > 0 ? tileSet.TileHeight : GetPresetBaseCell();
 
@@ -514,7 +509,7 @@ private void OnPresetChanged()
         #endregion
 
         #region Paint & HitTest (zoom-aware, source-based)
-        private void PanelTileset_Paint(object sender, PaintEventArgs e)
+        private void PanelTileset_Paint(object? sender, PaintEventArgs e)
         {
             var g = e.Graphics;
             g.Clear(panelTileset.BackColor);
@@ -531,13 +526,11 @@ private void OnPresetChanged()
             int cols = Math.Max(1, tileSet.Columns);
             int rows = Math.Max(1, tileSet.Rows);
 
-            // display tile size (use tileSet.TileWidth/TileHeight if set, otherwise preset)
             float tileW = tileSet.TileWidth > 0 ? tileSet.TileWidth : GetPresetBaseCell();
             float tileH = tileSet.TileHeight > 0 ? tileSet.TileHeight : GetPresetBaseCell();
             float dsW = tileW * (zoomPercent / 100f);
             float dsH = tileH * (zoomPercent / 100f);
 
-            // If not sliced yet, draw the full image fitted (preview) and overlay grid preview
             if (!isSliced)
             {
                 float displayW = cols * dsW;
@@ -571,7 +564,6 @@ private void OnPresetChanged()
                 return;
             }
 
-            // when sliced, draw tile-by-tile using SourceRect mapping
             for (int i = 0; i < tileSet.Tiles.Count; i++)
             {
                 int col = i % cols;
@@ -604,7 +596,6 @@ private void OnPresetChanged()
                 }
             }
 
-            // ghost drag
             if (isDragging && dragBitmap != null)
             {
                 var p = lastMouse;
@@ -646,7 +637,7 @@ private void OnPresetChanged()
         #endregion
 
         #region Drag / Swap (start after threshold) - only when sliced
-        private void PanelTileset_MouseDown(object sender, MouseEventArgs e)
+        private void PanelTileset_MouseDown(object? sender, MouseEventArgs e)
         {
             if (!isSliced) return;
             if (tileSet.Tiles.Count == 0) return;
@@ -660,7 +651,7 @@ private void OnPresetChanged()
             dragIndex = idx;
         }
 
-        private void PanelTileset_MouseMove(object sender, MouseEventArgs e)
+        private void PanelTileset_MouseMove(object? sender, MouseEventArgs e)
         {
             if (!isSliced) return;
             if (potentialDrag && !isDragging)
@@ -687,7 +678,7 @@ private void OnPresetChanged()
             }
         }
 
-        private void PanelTileset_MouseUp(object sender, MouseEventArgs e)
+        private void PanelTileset_MouseUp(object? sender, MouseEventArgs e)
         {
             if (!isSliced)
             {
@@ -707,6 +698,7 @@ private void OnPresetChanged()
             int target = HitTestTileIndex(e.Location);
             if (target >= 0 && dragIndex >= 0 && target != dragIndex)
             {
+                // perform swap action (overwrite)
                 var action = new Actions.SwapTileImagesAction(tileSet, dragIndex, target);
                 undo.Do(action);
                 tileSet.RebuildTiles();
@@ -729,7 +721,7 @@ private void OnPresetChanged()
         #endregion
 
         #region Selection & Context menu (only when sliced)
-        private void PanelTileset_MouseDoubleClick(object sender, MouseEventArgs e)
+        private void PanelTileset_MouseDoubleClick(object? sender, MouseEventArgs e)
         {
             if (!isSliced) return;
             if (ignoreNextDoubleClick) { ignoreNextDoubleClick = false; return; }
@@ -741,7 +733,7 @@ private void OnPresetChanged()
             }
         }
 
-        private void PanelTileset_MouseClick(object sender, MouseEventArgs e)
+        private void PanelTileset_MouseClick(object? sender, MouseEventArgs e)
         {
             if (!isSliced) return;
             if (e.Button == MouseButtons.Right)
@@ -757,8 +749,8 @@ private void OnPresetChanged()
         }
         #endregion
 
-        #region Context actions (copy/paste/rotate/flip/delete) - only when sliced
-        private void MiCopy_Click(object sender, EventArgs e)
+        #region Context actions (copy/paste/rotate/flip/delete/cut) - only when sliced
+        private void MiCopy_Click(object? sender, EventArgs e)
         {
             if (!isSliced) return;
             if (lastContextIndex < 0) return;
@@ -768,7 +760,30 @@ private void OnPresetChanged()
             UpdateStatus("Copied tile");
         }
 
-        private void MiPaste_Click(object sender, EventArgs e)
+        private void MiCut_Click(object? sender, EventArgs e)
+        {
+            if (!isSliced) return;
+            if (lastContextIndex < 0) return;
+
+            // copy to clipboardBitmap
+            clipboardBitmap?.Dispose();
+            clipboardBitmap = tileSet.ExtractTileBitmap(lastContextIndex);
+            clipboardIndex = lastContextIndex;
+
+            // then clear the source tile by applying a transparent bitmap of tile size
+            var rect = tileSet.Tiles[lastContextIndex].SourceRect;
+            using var empty = new Bitmap(Math.Max(1, rect.Width), Math.Max(1, rect.Height), PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(empty)) g.Clear(Color.Transparent);
+
+            var action = new Actions.TileImageAction(tileSet, lastContextIndex, empty);
+            undo.Do(action);
+            tileSet.RebuildTiles();
+            panelTileset.Invalidate();
+            MarkDirty();
+            UpdateStatus("Cut tile");
+        }
+
+        private void MiPaste_Click(object? sender, EventArgs e)
         {
             if (!isSliced) return;
             if (lastContextIndex < 0 || clipboardBitmap == null) return;
@@ -782,7 +797,7 @@ private void OnPresetChanged()
             UpdateStatus("Pasted tile");
         }
 
-        private void MiRotate_Click(object sender, EventArgs e)
+        private void MiRotate_Click(object? sender, EventArgs e)
         {
             if (!isSliced) return;
             if (lastContextIndex < 0) return;
@@ -797,7 +812,7 @@ private void OnPresetChanged()
             UpdateStatus("Rotated tile");
         }
 
-        private void MiFlip_Click(object sender, EventArgs e)
+        private void MiFlip_Click(object? sender, EventArgs e)
         {
             if (!isSliced) return;
             if (lastContextIndex < 0) return;
@@ -812,7 +827,7 @@ private void OnPresetChanged()
             UpdateStatus("Flipped tile");
         }
 
-        private void MiDelete_Click(object sender, EventArgs e)
+        private void MiDelete_Click(object? sender, EventArgs e)
         {
             if (!isSliced) return;
             if (lastContextIndex < 0) return;
@@ -827,7 +842,7 @@ private void OnPresetChanged()
             UpdateStatus("Deleted tile");
         }
 
-        private void MiEdit_Click(object sender, EventArgs e)
+        private void MiEdit_Click(object? sender, EventArgs e)
         {
             if (!isSliced) return;
             if (lastContextIndex < 0) return;
@@ -836,7 +851,7 @@ private void OnPresetChanged()
         #endregion
 
         #region Mouse wheel zoom
-        private void PanelTileset_MouseWheel(object sender, MouseEventArgs e)
+        private void PanelTileset_MouseWheel(object? sender, MouseEventArgs e)
         {
             if ((ModifierKeys & Keys.Control) == Keys.Control)
             {
@@ -851,7 +866,7 @@ private void OnPresetChanged()
         #endregion
 
         #region Keyboard shortcuts
-        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        private void Form1_KeyDown(object? sender, KeyEventArgs e)
         {
             if (e.Control && e.KeyCode == Keys.Z) DoUndo();
             if (e.Control && e.KeyCode == Keys.Y) DoRedo();
@@ -953,10 +968,11 @@ private void OnPresetChanged()
             miRedo.Enabled = editingEnabled;
             miPaste.Enabled = editingEnabled && clipboardBitmap != null;
             btnSave.Enabled = tileSet.Image != null;
+            btnSaveAs.Enabled = tileSet.Image != null;
 
-            // numeric fields enabled only when preset == Custom
-            numGridCols.Enabled = IsPresetCustom();
-            numGridRows.Enabled = IsPresetCustom();
+            // tile size fields enabled only when preset == Custom
+            numTileW.Enabled = IsPresetCustom();
+            numTileH.Enabled = IsPresetCustom();
         }
         #endregion
 

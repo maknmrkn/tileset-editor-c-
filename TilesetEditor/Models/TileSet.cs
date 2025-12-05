@@ -7,23 +7,20 @@ namespace TilesetEditor.Models
 {
     public class Tile
     {
-        // SourceRect is the logical source rectangle in the tileset image.
-        // It may lie partially or fully outside the current image bounds (for padded areas).
         public Rectangle SourceRect { get; set; }
         public Tile(Rectangle r) => SourceRect = r;
     }
 
     public class TileSet
     {
+        // Image can be null when no tileset is loaded
         public Bitmap? Image { get; set; }
 
         // If GridCols/GridRows > 0 then explicit counts are used (custom).
-        // Otherwise Columns/Rows are derived from TileWidth/TileHeight (preset).
         public int GridCols { get; set; } = 0;
         public int GridRows { get; set; } = 0;
 
         // Tile size in source pixels (set by Form1 when using preset or custom tile size).
-        // If zero, fallback logic will be used.
         public int TileWidth { get; set; } = 0;
         public int TileHeight { get; set; } = 0;
 
@@ -35,7 +32,7 @@ namespace TilesetEditor.Models
             {
                 if (GridCols > 0) return GridCols;
                 if (Image != null && TileWidth > 0) return Math.Max(1, (Image.Width + TileWidth - 1) / TileWidth);
-                return (Image != null) ? Math.Max(1, Image.Width / 32) : 0;
+                return (Image != null) ? Math.Max(1, Image.Width / 32) : 1;
             }
         }
 
@@ -45,52 +42,38 @@ namespace TilesetEditor.Models
             {
                 if (GridRows > 0) return GridRows;
                 if (Image != null && TileHeight > 0) return Math.Max(1, (Image.Height + TileHeight - 1) / TileHeight);
-                return (Image != null) ? Math.Max(1, Image.Height / 32) : 0;
+                return (Image != null) ? Math.Max(1, Image.Height / 32) : 1;
             }
         }
 
-        /// <summary>
-        /// Rebuild Tiles list based on current Image and either TileWidth/TileHeight (preferred) or Columns/Rows.
-        /// Tiles may have SourceRect that extend beyond Image bounds (for padded areas).
-        /// </summary>
         public void RebuildTiles()
         {
             Tiles.Clear();
-            if (Columns <= 0 || Rows <= 0) return;
+            int cols = Math.Max(1, Columns);
+            int rows = Math.Max(1, Rows);
 
-            if (Image == null)
+            // If tile size not set but image exists, derive a reasonable tile size
+            if ((TileWidth <= 0 || TileHeight <= 0) && Image != null)
             {
-                for (int r = 0; r < Rows; r++)
-                    for (int c = 0; c < Columns; c++)
-                        Tiles.Add(new Tile(new Rectangle(0, 0, 0, 0)));
-                return;
+                if (TileWidth <= 0) TileWidth = Math.Max(1, Image.Width / cols);
+                if (TileHeight <= 0) TileHeight = Math.Max(1, Image.Height / rows);
             }
 
-            // Determine tile size in source pixels
-            int cellW = TileWidth > 0 ? TileWidth : (Image.Width / Columns);
-            int cellH = TileHeight > 0 ? TileHeight : (Image.Height / Rows);
+            // Ensure tile size is at least 1
+            int cellW = Math.Max(1, TileWidth > 0 ? TileWidth : 32);
+            int cellH = Math.Max(1, TileHeight > 0 ? TileHeight : 32);
 
-            for (int r = 0; r < Rows; r++)
+            for (int r = 0; r < rows; r++)
             {
-                for (int c = 0; c < Columns; c++)
+                for (int c = 0; c < cols; c++)
                 {
                     int sx = c * cellW;
                     int sy = r * cellH;
-                    int sw = cellW;
-                    int sh = cellH;
-
-                    // If the source rectangle is fully outside the image, we still create a rect
-                    // so UI can render an empty tile area and user can paste into it.
-                    // ExtractTileBitmap will handle partial intersections.
-                    Tiles.Add(new Tile(new Rectangle(sx, sy, sw, sh)));
+                    Tiles.Add(new Tile(new Rectangle(sx, sy, cellW, cellH)));
                 }
             }
         }
 
-        /// <summary>
-        /// Extracts a bitmap for the tile at index. If the tile's SourceRect extends outside the image,
-        /// the returned bitmap will be the full tile size with transparent areas where image data is missing.
-        /// </summary>
         public Bitmap ExtractTileBitmap(int index)
         {
             if (index < 0 || index >= Tiles.Count) return new Bitmap(1, 1, PixelFormat.Format32bppArgb);
@@ -104,12 +87,10 @@ namespace TilesetEditor.Models
                 g.Clear(Color.Transparent);
                 if (Image == null) return bmp;
 
-                // Source intersection with image bounds
                 var imgRect = new Rectangle(0, 0, Image.Width, Image.Height);
                 var srcIntersect = Rectangle.Intersect(rect, imgRect);
                 if (srcIntersect.Width <= 0 || srcIntersect.Height <= 0) return bmp;
 
-                // Destination point inside bmp where the intersected portion should be drawn
                 int destX = srcIntersect.X - rect.X;
                 int destY = srcIntersect.Y - rect.Y;
 
@@ -121,16 +102,13 @@ namespace TilesetEditor.Models
             return bmp;
         }
 
-        /// <summary>
-        /// Expand the underlying image canvas by extraWidth and extraHeight.
-        /// The existing image is drawn at (0,0) and new areas are left transparent.
-        /// Returns true if expansion occurred.
-        /// </summary>
         public bool ExpandCanvas(int extraWidth, int extraHeight)
         {
             if (extraWidth <= 0 && extraHeight <= 0) return false;
-            int newW = Math.Max(1, (Image?.Width ?? 0) + extraWidth);
-            int newH = Math.Max(1, (Image?.Height ?? 0) + extraHeight);
+            int currentW = Image?.Width ?? 0;
+            int currentH = Image?.Height ?? 0;
+            int newW = Math.Max(1, currentW + extraWidth);
+            int newH = Math.Max(1, currentH + extraHeight);
 
             var newBmp = new Bitmap(newW, newH, PixelFormat.Format32bppArgb);
             using (var g = Graphics.FromImage(newBmp))
@@ -146,17 +124,15 @@ namespace TilesetEditor.Models
             return true;
         }
 
-        /// <summary>
-        /// Pads canvas to ensure it can contain at least cols * TileWidth and rows * TileHeight.
-        /// If TileWidth/TileHeight are zero, no padding is performed.
-        /// </summary>
         public void EnsureCanvasForGrid(int cols, int rows)
         {
             if (TileWidth <= 0 || TileHeight <= 0) return;
             int requiredW = cols * TileWidth;
             int requiredH = rows * TileHeight;
-            int extraW = Math.Max(0, requiredW - (Image?.Width ?? 0));
-            int extraH = Math.Max(0, requiredH - (Image?.Height ?? 0));
+            int currentW = Image?.Width ?? 0;
+            int currentH = Image?.Height ?? 0;
+            int extraW = Math.Max(0, requiredW - currentW);
+            int extraH = Math.Max(0, requiredH - currentH);
             if (extraW > 0 || extraH > 0) ExpandCanvas(extraW, extraH);
         }
     }

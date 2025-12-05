@@ -1,53 +1,91 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using TilesetEditor.Models;
 
 namespace TilesetEditor.Actions
 {
+    /// <summary>
+    /// Swap the image content of two tiles (by index). Stores before snapshots for Undo.
+    /// Uses SourceCopy so swap overwrites pixels cleanly.
+    /// </summary>
     public class SwapTileImagesAction : IAction
     {
-        private readonly TilesetEditor.Models.TileSet _tileSet;
-        private readonly Rectangle _rectA;
-        private readonly Rectangle _rectB;
-        private readonly Bitmap _bmpA;
-        private readonly Bitmap _bmpB;
+        private readonly TileSet _tileSet;
+        private readonly int _a;
+        private readonly int _b;
+        private Bitmap? _beforeA;
+        private Bitmap? _beforeB;
 
-        public SwapTileImagesAction(TilesetEditor.Models.TileSet tileSet, int indexA, int indexB)
+        public SwapTileImagesAction(TileSet tileSet, int indexA, int indexB)
         {
             _tileSet = tileSet ?? throw new ArgumentNullException(nameof(tileSet));
-            if (indexA < 0 || indexB < 0 || indexA >= tileSet.Tiles.Count || indexB >= tileSet.Tiles.Count)
-                throw new ArgumentOutOfRangeException("Swap indices out of range");
-
-            _rectA = tileSet.Tiles[indexA].SourceRect;
-            _rectB = tileSet.Tiles[indexB].SourceRect;
-
-            var ta = tileSet.ExtractTileBitmap(indexA);
-            var tb = tileSet.ExtractTileBitmap(indexB);
-
-            _bmpA = ta != null ? new Bitmap(ta) : new Bitmap(Math.Max(1, _rectA.Width), Math.Max(1, _rectA.Height));
-            _bmpB = tb != null ? new Bitmap(tb) : new Bitmap(Math.Max(1, _rectB.Width), Math.Max(1, _rectB.Height));
+            _a = indexA;
+            _b = indexB;
+            _beforeA = null;
+            _beforeB = null;
         }
 
         public void Do()
         {
-            Apply(_rectA, _bmpB);
-            Apply(_rectB, _bmpA);
+            if (_a < 0 || _b < 0 || _a >= _tileSet.Tiles.Count || _b >= _tileSet.Tiles.Count) return;
+
+            // capture before snapshots if not captured
+            if (_beforeA == null)
+            {
+                _beforeA?.Dispose();
+                _beforeA = _tileSet.ExtractTileBitmap(_a);
+            }
+            if (_beforeB == null)
+            {
+                _beforeB?.Dispose();
+                _beforeB = _tileSet.ExtractTileBitmap(_b);
+            }
+
+            // Apply swap: draw beforeA into B and beforeB into A (overwrite)
+            if (_beforeB != null) ApplyBitmapToTile(_a, _beforeB);
+            if (_beforeA != null) ApplyBitmapToTile(_b, _beforeA);
         }
 
         public void Undo()
         {
-            Apply(_rectA, _bmpA);
-            Apply(_rectB, _bmpB);
+            if (_a < 0 || _b < 0 || _a >= _tileSet.Tiles.Count || _b >= _tileSet.Tiles.Count) return;
+
+            // restore original snapshots (overwrite)
+            if (_beforeA != null) ApplyBitmapToTile(_a, _beforeA);
+            if (_beforeB != null) ApplyBitmapToTile(_b, _beforeB);
         }
 
-        private void Apply(Rectangle destRect, Bitmap bmp)
+        private void ApplyBitmapToTile(int index, Bitmap bmp)
         {
-            if (_tileSet.Image == null) return;
-            using var g = Graphics.FromImage(_tileSet.Image);
-            var prev = g.CompositingMode;
-            g.CompositingMode = CompositingMode.SourceCopy;
-            g.DrawImage(bmp, destRect);
-            g.CompositingMode = prev;
+            if (index < 0 || index >= _tileSet.Tiles.Count) return;
+            var rect = _tileSet.Tiles[index].SourceRect;
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            // Ensure canvas large enough for the grid (tile size based)
+            _tileSet.EnsureCanvasForGrid(_tileSet.Columns, _tileSet.Rows);
+
+            // If image is null, create a canvas large enough
+            if (_tileSet.Image == null)
+            {
+                int newW = Math.Max(1, rect.Right);
+                int newH = Math.Max(1, rect.Bottom);
+                _tileSet.Image = new Bitmap(newW, newH, PixelFormat.Format32bppArgb);
+                using (var g = Graphics.FromImage(_tileSet.Image)) g.Clear(Color.Transparent);
+            }
+            else
+            {
+                // If rect extends beyond image, expand canvas
+                int extraW = Math.Max(0, rect.Right - _tileSet.Image.Width);
+                int extraH = Math.Max(0, rect.Bottom - _tileSet.Image.Height);
+                if (extraW > 0 || extraH > 0) _tileSet.ExpandCanvas(extraW, extraH);
+            }
+
+            using (var g = Graphics.FromImage(_tileSet.Image))
+            {
+                g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+                g.DrawImage(bmp, rect.X, rect.Y, rect.Width, rect.Height);
+            }
         }
     }
 }
