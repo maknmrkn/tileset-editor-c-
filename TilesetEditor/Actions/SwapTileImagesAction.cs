@@ -6,41 +6,44 @@ namespace TilesetEditor.Actions
 {
     public class SwapTileImagesAction : IAction
     {
-        TilesetEditor.Models.TileSet tileSet;
-        Rectangle aRect, bRect;
-        Bitmap aBmp, bBmp;
+        private readonly TilesetEditor.Models.TileSet _tileSet;
+        private readonly Rectangle _rectA;
+        private readonly Rectangle _rectB;
+        private readonly Bitmap _bmpA;
+        private readonly Bitmap _bmpB;
 
-        public SwapTileImagesAction(TilesetEditor.Models.TileSet tileSet, int a, int b)
+        public SwapTileImagesAction(TilesetEditor.Models.TileSet tileSet, int indexA, int indexB)
         {
-            this.tileSet = tileSet ?? throw new ArgumentNullException(nameof(tileSet));
-            if (a < 0 || b < 0 || a >= tileSet.Tiles.Count || b >= tileSet.Tiles.Count)
+            _tileSet = tileSet ?? throw new ArgumentNullException(nameof(tileSet));
+            if (indexA < 0 || indexB < 0 || indexA >= tileSet.Tiles.Count || indexB >= tileSet.Tiles.Count)
                 throw new ArgumentOutOfRangeException("Swap indices out of range");
 
-            aRect = tileSet.Tiles[a].SourceRect;
-            bRect = tileSet.Tiles[b].SourceRect;
+            _rectA = tileSet.Tiles[indexA].SourceRect;
+            _rectB = tileSet.Tiles[indexB].SourceRect;
 
-            var ta = tileSet.ExtractTileBitmap(a);
-            var tb = tileSet.ExtractTileBitmap(b);
-            aBmp = ta != null ? new Bitmap(ta) : new Bitmap(Math.Max(1, aRect.Width), Math.Max(1, aRect.Height));
-            bBmp = tb != null ? new Bitmap(tb) : new Bitmap(Math.Max(1, bRect.Width), Math.Max(1, bRect.Height));
+            var ta = tileSet.ExtractTileBitmap(indexA);
+            var tb = tileSet.ExtractTileBitmap(indexB);
+
+            _bmpA = ta != null ? new Bitmap(ta) : new Bitmap(Math.Max(1, _rectA.Width), Math.Max(1, _rectA.Height));
+            _bmpB = tb != null ? new Bitmap(tb) : new Bitmap(Math.Max(1, _rectB.Width), Math.Max(1, _rectB.Height));
         }
 
         public void Do()
         {
-            Apply(aRect, bBmp);
-            Apply(bRect, aBmp);
+            Apply(_rectA, _bmpB);
+            Apply(_rectB, _bmpA);
         }
 
         public void Undo()
         {
-            Apply(aRect, aBmp);
-            Apply(bRect, bBmp);
+            Apply(_rectA, _bmpA);
+            Apply(_rectB, _bmpB);
         }
 
         private void Apply(Rectangle destRect, Bitmap bmp)
         {
-            if (tileSet.Image == null) return;
-            using var g = Graphics.FromImage(tileSet.Image);
+            if (_tileSet.Image == null) return;
+            using var g = Graphics.FromImage(_tileSet.Image);
             var prev = g.CompositingMode;
             g.CompositingMode = CompositingMode.SourceCopy;
             g.DrawImage(bmp, destRect);

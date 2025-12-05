@@ -35,5 +35,8 @@ namespace TilesetEditor.Utils
         {
             undo.Clear(); redo.Clear();
         }
+
+        public int UndoCount => undo.Count;
+        public int RedoCount => redo.Count;
     }
 }

@@ -38,6 +38,7 @@
             // Top info panel
             this.panelTop = new System.Windows.Forms.Panel();
             this.lblTilesetInfo = new System.Windows.Forms.Label();
+            this.btnApplyGrid = new System.Windows.Forms.Button();
 
             // Right side panel (controls)
             this.panelRight = new System.Windows.Forms.Panel();
@@ -54,6 +55,10 @@
             this.chkUseCustomGrid = new System.Windows.Forms.CheckBox();
             this.numGridCols = new System.Windows.Forms.NumericUpDown();
             this.numGridRows = new System.Windows.Forms.NumericUpDown();
+
+            // Grid preset (display cell size presets)
+            this.lblPreset = new System.Windows.Forms.Label();
+            this.cbPresetSize = new System.Windows.Forms.ComboBox();
 
             // Zoom / View controls
             this.grpView = new System.Windows.Forms.GroupBox();
@@ -124,13 +129,16 @@
 
             // panelTop
             this.panelTop.Dock = System.Windows.Forms.DockStyle.Top;
-            this.panelTop.Height = 40;
+            this.panelTop.Height = 48;
             this.panelTop.Padding = new System.Windows.Forms.Padding(8);
             this.panelTop.BackColor = System.Drawing.Color.FromArgb(250, 250, 250);
             this.lblTilesetInfo.Text = "No tileset loaded";
             this.lblTilesetInfo.AutoSize = true;
             this.lblTilesetInfo.Location = new System.Drawing.Point(12, 12);
+            this.btnApplyGrid.Text = "Apply Grid / Slice";
+            this.btnApplyGrid.SetBounds(220, 10, 140, 28);
             this.panelTop.Controls.Add(this.lblTilesetInfo);
+            this.panelTop.Controls.Add(this.btnApplyGrid);
 
             // panelRight
             this.panelRight.Dock = System.Windows.Forms.DockStyle.Right;
@@ -140,7 +148,7 @@
 
             // grpGrid
             this.grpGrid.Text = "Grid Controls";
-            this.grpGrid.SetBounds(8, 8, 340, 160);
+            this.grpGrid.SetBounds(8, 8, 340, 200);
 
             this.lblGridHeader.Text = "Grid (cols × rows)";
             this.lblGridHeader.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
@@ -151,35 +159,41 @@
 
             this.lblCols.Text = "Cols:";
             this.lblCols.SetBounds(8, 68, 40, 20);
+            this.numGridCols.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.numGridCols.Value = new decimal(new int[] { 10, 0, 0, 0 });
+            this.numGridCols.SetBounds(56, 64, 120, 24);
             this.btnAddCol.Text = "+";
             this.btnAddCol.SetBounds(200, 64, 36, 24);
             this.btnRemoveCol.Text = "−";
             this.btnRemoveCol.SetBounds(240, 64, 36, 24);
 
-            this.numGridCols.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
-            this.numGridCols.Value = new decimal(new int[] { 10, 0, 0, 0 });
-            this.numGridCols.SetBounds(56, 64, 120, 24);
-
             this.lblRows.Text = "Rows:";
             this.lblRows.SetBounds(8, 96, 40, 20);
+            this.numGridRows.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.numGridRows.Value = new decimal(new int[] { 10, 0, 0, 0 });
+            this.numGridRows.SetBounds(56, 92, 120, 24);
             this.btnAddRow.Text = "+";
             this.btnAddRow.SetBounds(200, 92, 36, 24);
             this.btnRemoveRow.Text = "−";
             this.btnRemoveRow.SetBounds(240, 92, 36, 24);
 
-            this.numGridRows.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
-            this.numGridRows.Value = new decimal(new int[] { 10, 0, 0, 0 });
-            this.numGridRows.SetBounds(56, 92, 120, 24);
+            this.lblPreset.Text = "Grid cell preset:";
+            this.lblPreset.SetBounds(8, 128, 120, 20);
+            this.cbPresetSize.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cbPresetSize.Items.AddRange(new object[] { "8", "16", "24", "32", "48", "64", "96", "128" });
+            this.cbPresetSize.SelectedIndex = 3;
+            this.cbPresetSize.SetBounds(136, 124, 120, 24);
 
             this.grpGrid.Controls.AddRange(new System.Windows.Forms.Control[] {
                 this.lblGridHeader, this.chkUseCustomGrid,
                 this.lblCols, this.numGridCols, this.btnAddCol, this.btnRemoveCol,
-                this.lblRows, this.numGridRows, this.btnAddRow, this.btnRemoveRow
+                this.lblRows, this.numGridRows, this.btnAddRow, this.btnRemoveRow,
+                this.lblPreset, this.cbPresetSize
             });
 
             // grpView
             this.grpView.Text = "View / Zoom";
-            this.grpView.SetBounds(8, 176, 340, 200);
+            this.grpView.SetBounds(8, 216, 340, 180);
 
             this.lblZoom.Text = "Zoom:";
             this.lblZoom.SetBounds(8, 20, 40, 20);
@@ -206,7 +220,7 @@
 
             // grpActions
             this.grpActions.Text = "Actions";
-            this.grpActions.SetBounds(8, 388, 340, 120);
+            this.grpActions.SetBounds(8, 408, 340, 120);
 
             this.btnLoad.Text = "Load Tileset";
             this.btnLoad.SetBounds(8, 24, 140, 30);
@@ -258,7 +272,7 @@
 
             this.MainMenuStrip = this.menuStrip;
             this.Text = "Tileset Editor";
-            this.ClientSize = new System.Drawing.Size(1280, 820);
+            this.ClientSize = new System.Drawing.Size(1280, 860);
         }
 
         // Controls declarations
@@ -284,6 +298,7 @@
 
         private System.Windows.Forms.Panel panelTop;
         private System.Windows.Forms.Label lblTilesetInfo;
+        private System.Windows.Forms.Button btnApplyGrid;
 
         private System.Windows.Forms.Panel panelRight;
         private System.Windows.Forms.GroupBox grpGrid;
@@ -297,6 +312,8 @@
         private System.Windows.Forms.CheckBox chkUseCustomGrid;
         private System.Windows.Forms.NumericUpDown numGridCols;
         private System.Windows.Forms.NumericUpDown numGridRows;
+        private System.Windows.Forms.Label lblPreset;
+        private System.Windows.Forms.ComboBox cbPresetSize;
 
         private System.Windows.Forms.GroupBox grpView;
         private System.Windows.Forms.Label lblZoom;
