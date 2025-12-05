@@ -1,0 +1,63 @@
+############################
+#   Build / Compile Files  #
+############################
+bin/
+obj/
+[Bb]uild/
+[Ll]og/
+[Ll]ogs/
+
+############################
+#   IDE / Editor Files     #
+############################
+.vscode/
+*.code-workspace
+
+############################
+#   User / Temp Files      #
+############################
+*.user
+*.suo
+*.cache
+*.tmp
+*.temp
+*.log
+*.bak
+*.orig
+
+############################
+#   NuGet                  #
+############################
+packages/
+*.nupkg
+!packages/build/
+
+############################
+#   .NET Core Legacy Files #
+############################
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+############################
+#   Databases (LocalDB)    #
+############################
+*.mdf
+*.ldf
+
+############################
+#   Debug Symbols          #
+############################
+*.pdb
+*.mdb
+
+############################
+#   OS Files               #
+############################
+# Windows
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# macOS
+.DS_Store
