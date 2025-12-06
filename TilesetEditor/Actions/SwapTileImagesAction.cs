@@ -5,10 +5,6 @@ using TilesetEditor.Models;
 
 namespace TilesetEditor.Actions
 {
-    /// <summary>
-    /// Swap the image content of two tiles (by index). Stores before snapshots for Undo.
-    /// Uses SourceCopy so swap overwrites pixels cleanly.
-    /// </summary>
     public class SwapTileImagesAction : IAction
     {
         private readonly TileSet _tileSet;
@@ -30,19 +26,19 @@ namespace TilesetEditor.Actions
         {
             if (_a < 0 || _b < 0 || _a >= _tileSet.Tiles.Count || _b >= _tileSet.Tiles.Count) return;
 
-            // capture before snapshots if not captured
             if (_beforeA == null)
             {
                 _beforeA?.Dispose();
-                _beforeA = _tileSet.ExtractTileBitmap(_a);
+                // *** تغییر این خط: ExtractTileBitmap → GetTileBitmapCopy ***
+                _beforeA = _tileSet.GetTileBitmapCopy(_a);
             }
             if (_beforeB == null)
             {
                 _beforeB?.Dispose();
-                _beforeB = _tileSet.ExtractTileBitmap(_b);
+                // *** تغییر این خط: ExtractTileBitmap → GetTileBitmapCopy ***
+                _beforeB = _tileSet.GetTileBitmapCopy(_b);
             }
 
-            // Apply swap: draw beforeA into B and beforeB into A (overwrite)
             if (_beforeB != null) ApplyBitmapToTile(_a, _beforeB);
             if (_beforeA != null) ApplyBitmapToTile(_b, _beforeA);
         }
@@ -51,7 +47,6 @@ namespace TilesetEditor.Actions
         {
             if (_a < 0 || _b < 0 || _a >= _tileSet.Tiles.Count || _b >= _tileSet.Tiles.Count) return;
 
-            // restore original snapshots (overwrite)
             if (_beforeA != null) ApplyBitmapToTile(_a, _beforeA);
             if (_beforeB != null) ApplyBitmapToTile(_b, _beforeB);
         }
@@ -62,10 +57,8 @@ namespace TilesetEditor.Actions
             var rect = _tileSet.Tiles[index].SourceRect;
             if (rect.Width <= 0 || rect.Height <= 0) return;
 
-            // Ensure canvas large enough for the grid (tile size based)
             _tileSet.EnsureCanvasForGrid(_tileSet.Columns, _tileSet.Rows);
 
-            // If image is null, create a canvas large enough
             if (_tileSet.Image == null)
             {
                 int newW = Math.Max(1, rect.Right);
@@ -75,7 +68,6 @@ namespace TilesetEditor.Actions
             }
             else
             {
-                // If rect extends beyond image, expand canvas
                 int extraW = Math.Max(0, rect.Right - _tileSet.Image.Width);
                 int extraH = Math.Max(0, rect.Bottom - _tileSet.Image.Height);
                 if (extraW > 0 || extraH > 0) _tileSet.ExpandCanvas(extraW, extraH);

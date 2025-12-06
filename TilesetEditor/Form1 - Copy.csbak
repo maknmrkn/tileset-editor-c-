@@ -23,7 +23,7 @@ namespace TilesetEditor
         private bool showGrid = true;
 
         // zoom state (percentage)
-        private float zoomPercent = 100f;
+        private float zoomPercent = 100f; // 100% default
         private const int ZoomMin = 10;
         private const int ZoomMax = 400;
 
@@ -32,6 +32,8 @@ namespace TilesetEditor
         Bitmap? dragBitmap = null;
         int dragIndex = -1;
         Point lastMouse = Point.Empty;
+
+        // potential drag start
         private Point mouseDownPos = Point.Empty;
         private bool potentialDrag = false;
 
@@ -58,19 +60,19 @@ namespace TilesetEditor
         {
             InitializeComponent();
 
-            // فعال‌سازی Double Buffering پیشرفته
-            this.DoubleBuffered = true;
-            SetStyle(ControlStyles.OptimizedDoubleBuffer |
-                     ControlStyles.AllPaintingInWmPaint |
-                     ControlStyles.UserPaint, true);
-
-            typeof(Panel).GetProperty("DoubleBuffered",
+                        this.DoubleBuffered = true;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | 
+                    ControlStyles.AllPaintingInWmPaint | 
+                    ControlStyles.UserPaint, true);
+            
+            typeof(Panel).GetProperty("DoubleBuffered", 
                 BindingFlags.Instance | BindingFlags.NonPublic)?
                 .SetValue(panelTileset, true, null);
 
-            // بقیه کدهای اولیه
+            // ensure "Custom" exists in preset combobox
             if (!cbPresetSize.Items.Contains("Custom")) cbPresetSize.Items.Add("Custom");
 
+            // enable double buffering on panel to reduce flicker
             try
             {
                 var pb = typeof(Panel).GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -202,7 +204,6 @@ namespace TilesetEditor
         {
             undo.Undo();
             tileSet.RebuildTiles();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
             panelTileset.Invalidate();
             MarkDirty();
         }
@@ -211,7 +212,6 @@ namespace TilesetEditor
         {
             undo.Redo();
             tileSet.RebuildTiles();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
             panelTileset.Invalidate();
             MarkDirty();
         }
@@ -270,7 +270,6 @@ namespace TilesetEditor
             undo.Clear();
             isDirty = false;
             isSliced = false;
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
             lblTilesetInfo.Text = Path.GetFileName(ofd.FileName);
             FitToView();
             UpdateUIState();
@@ -296,10 +295,7 @@ namespace TilesetEditor
             if (ext == ".jpg" || ext == ".jpeg") fmt = ImageFormat.Jpeg;
             else if (ext == ".bmp") fmt = ImageFormat.Bmp;
 
-            var imgToSave = tileSet.Image;
-            if (imgToSave == null) { MessageBox.Show("No tileset to save."); return; }
-            imgToSave.Save(sfd.FileName, fmt);
-
+            tileSet.Image.Save(sfd.FileName, fmt);
             lastSavePath = Path.GetDirectoryName(sfd.FileName) ?? lastSavePath;
             isDirty = false;
             UpdateStatus($"Saved: {Path.GetFileName(sfd.FileName)}");
@@ -317,10 +313,7 @@ namespace TilesetEditor
             if (ext == ".jpg" || ext == ".jpeg") fmt = ImageFormat.Jpeg;
             else if (ext == ".bmp") fmt = ImageFormat.Bmp;
 
-            var imgToSave = tileSet.Image;
-            if (imgToSave == null) { MessageBox.Show("No tileset to save."); return; }
-            imgToSave.Save(sfd.FileName, fmt);
-
+            tileSet.Image.Save(sfd.FileName, fmt);
             lastSavePath = Path.GetDirectoryName(sfd.FileName) ?? lastSavePath;
             isDirty = false;
             UpdateStatus($"Saved As: {Path.GetFileName(sfd.FileName)}");
@@ -338,7 +331,6 @@ namespace TilesetEditor
             undo.Do(action);
 
             tileSet.RebuildTiles();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
             isSliced = true;
             UpdateScrollSize();
             panelTileset.Invalidate();
@@ -356,7 +348,6 @@ namespace TilesetEditor
             undo.Do(action);
 
             tileSet.RebuildTiles();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
             isSliced = true;
             UpdateScrollSize();
             panelTileset.Invalidate();
@@ -374,7 +365,6 @@ namespace TilesetEditor
             undo.Do(action);
 
             tileSet.RebuildTiles();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
             isSliced = true;
             UpdateScrollSize();
             panelTileset.Invalidate();
@@ -392,7 +382,6 @@ namespace TilesetEditor
             undo.Do(action);
 
             tileSet.RebuildTiles();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
             isSliced = true;
             UpdateScrollSize();
             panelTileset.Invalidate();
@@ -422,7 +411,6 @@ namespace TilesetEditor
             tileSet.EnsureCanvasForGrid(tileSet.Columns, tileSet.Rows);
 
             tileSet.RebuildTiles();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
             tileSet.BuildCompleteCache(); // کش را کامل بساز
             isSliced = true;
             undo.Clear();
@@ -504,9 +492,7 @@ namespace TilesetEditor
         #region Fit to view
         private void FitToView()
         {
-            var img = tileSet.Image;
-            if (img == null) return;
-
+            if (tileSet.Image == null) return;
             int cols = Math.Max(1, tileSet.Columns);
             int rows = Math.Max(1, tileSet.Rows);
 
@@ -533,240 +519,132 @@ namespace TilesetEditor
         }
         #endregion
 
-        #region Paint & HitTest
-        private void PanelTileset_Paint(object? sender, PaintEventArgs e)
+        #region Paint & HitTest (zoom-aware, source-based)
+private void PanelTileset_Paint(object? sender, PaintEventArgs e)
+{
+    var g = e.Graphics;
+    
+    // تنظیمات گرافیک برای سرعت بالا
+    g.CompositingQuality = CompositingQuality.HighSpeed;
+    g.InterpolationMode = InterpolationMode.NearestNeighbor;
+    g.PixelOffsetMode = PixelOffsetMode.Half;
+    g.SmoothingMode = SmoothingMode.None;
+    
+    g.Clear(panelTileset.BackColor);
+
+    if (tileSet.Image == null)
+    {
+        using var f = new Font("Segoe UI", 12);
+        using var b = new SolidBrush(Color.Black);
+        g.DrawString("Load tileset from File -> Load Tileset", f, b, 8, 8);
+        return;
+    }
+
+    var scroll = panelTileset.AutoScrollPosition;
+    
+    // حالت بدون slice (تصویر کامل)
+    if (!isSliced)
+    {
+        float tileW = tileSet.TileWidth > 0 ? tileSet.TileWidth : GetPresetBaseCell();
+        float tileH = tileSet.TileHeight > 0 ? tileSet.TileHeight : GetPresetBaseCell();
+        float dsW = tileW * (zoomPercent / 100f);
+        float dsH = tileH * (zoomPercent / 100f);
+        
+        int cols = Math.Max(1, tileSet.Columns);
+        int rows = Math.Max(1, tileSet.Rows);
+        
+        float displayW = cols * dsW;
+        float displayH = rows * dsH;
+
+        float areaX = scroll.X + 8f;
+        float areaY = scroll.Y + panelTop.Height + 8f;
+
+        float offsetX = Math.Max(0f, (panelTileset.ClientSize.Width - displayW) / 2f);
+        float offsetY = Math.Max(0f, (panelTileset.ClientSize.Height - panelTop.Height - displayH) / 2f);
+        areaX += offsetX;
+        areaY += offsetY;
+
+        g.DrawImage(tileSet.Image, 
+            new RectangleF(areaX, areaY, displayW, displayH), 
+            new RectangleF(0, 0, tileSet.Image.Width, tileSet.Image.Height), 
+            GraphicsUnit.Pixel);
+
+        if (showGrid)
         {
-            var g = e.Graphics;
-
-            // تنظیمات گرافیک برای سرعت بالا
-            g.CompositingQuality = CompositingQuality.HighSpeed;
-            g.InterpolationMode = InterpolationMode.NearestNeighbor;
-            g.PixelOffsetMode = PixelOffsetMode.Half;
-            g.SmoothingMode = SmoothingMode.None;
-
-            g.Clear(panelTileset.BackColor);
-
-            if (tileSet.Image == null)
-            {
-                using var f = new Font("Segoe UI", 12);
-                using var b = new SolidBrush(Color.Black);
-                g.DrawString("Load tileset from File -> Load Tileset", f, b, 8, 8);
-                return;
-            }
-
-            var scroll = panelTileset.AutoScrollPosition;
-
-            // حالت بدون slice (تصویر کامل)
-            if (!isSliced)
-            {
-                RenderUnsliced(g, scroll);
-                return;
-            }
-
-            // حالت sliced: استفاده از composite bitmap
-            try
-            {
-                var sw = Stopwatch.StartNew();
-
-                // دریافت composite bitmap (یک‌بار ساخته می‌شود)
-                var composite = tileSet.GetCompositeBitmap();
-                if (composite == null)
-                {
-                    // اگر به هر دلیلی composite تهی شد، به fallback بزن
-                    RenderFallback(g, scroll);
-                    return;
-                }
-
-                float scale = zoomPercent / 100f;
-                float destWidth = composite.Width * scale;
-                float destHeight = composite.Height * scale;
-
-                // فقط یک DrawImage برای کل tileset!
-                g.DrawImage(composite,
-                    scroll.X + 8f,
-                    scroll.Y + panelTop.Height + 8f,
-                    destWidth, destHeight);
-
-                sw.Stop();
-
-                // رندر گرید اگر نیاز است
-                if (showGrid)
-                {
-                    RenderGridOverlay(g, scroll, scale);
-                }
-
-                // رندر tile در حال drag
-                var db = dragBitmap;
-                if (isDragging && db != null)
-                {
-                    RenderDraggingTile(g, scroll, scale);
-                }
-
-                // فقط اگر خیلی کند بود لاگ کن
-                if (sw.ElapsedMilliseconds > 30)
-                {
-                    Debug.WriteLine($"Composite رندر: {sw.ElapsedMilliseconds}ms");
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"خطا در رندر: {ex.Message}");
-                // Fallback
-                RenderFallback(g, scroll);
-            }
-        }
-
-        private void RenderUnsliced(Graphics g, Point scroll)
-        {
-            var img = tileSet.Image;
-            if (img == null) return; // محافظت اضافی
-
-            float tileW = tileSet.TileWidth > 0 ? tileSet.TileWidth : GetPresetBaseCell();
-            float tileH = tileSet.TileHeight > 0 ? tileSet.TileHeight : GetPresetBaseCell();
-            float dsW = tileW * (zoomPercent / 100f);
-            float dsH = tileH * (zoomPercent / 100f);
-
-            int cols = Math.Max(1, tileSet.Columns);
-            int rows = Math.Max(1, tileSet.Rows);
-
-            float displayW = cols * dsW;
-            float displayH = rows * dsH;
-
-            float areaX = scroll.X + 8f;
-            float areaY = scroll.Y + panelTop.Height + 8f;
-
-            float offsetX = Math.Max(0f, (panelTileset.ClientSize.Width - displayW) / 2f);
-            float offsetY = Math.Max(0f, (panelTileset.ClientSize.Height - panelTop.Height - displayH) / 2f);
-            areaX += offsetX;
-            areaY += offsetY;
-
-            g.DrawImage(img,
-                new RectangleF(areaX, areaY, displayW, displayH),
-                new RectangleF(0, 0, img.Width, img.Height),
-                GraphicsUnit.Pixel);
-
-            if (showGrid)
-            {
-                using var pen = new Pen(gridColor);
-                for (int r = 0; r <= rows; r++)
-                {
-                    float y = areaY + r * dsH;
-                    g.DrawLine(pen, areaX, y, areaX + displayW, y);
-                }
-                for (int c = 0; c <= cols; c++)
-                {
-                    float x = areaX + c * dsW;
-                    g.DrawLine(pen, x, areaY, x, areaY + displayH);
-                }
-            }
-        }
-
-        private void RenderGridOverlay(Graphics g, Point scroll, float scale)
-        {
-            int cols = Math.Max(1, tileSet.Columns);
-            int rows = Math.Max(1, tileSet.Rows);
-            float tileW = tileSet.TileWidth * scale;
-            float tileH = tileSet.TileHeight * scale;
-
-            if (tileW < 3 || tileH < 3) return; // اگر tileها خیلی کوچک هستند، گرید نکش
-
-            using var pen = new Pen(Color.FromArgb(150, gridColor));
-
-            float startX = scroll.X + 8f;
-            float startY = scroll.Y + panelTop.Height + 8f;
-
-            // خطوط عمودی
-            for (int c = 0; c <= cols; c++)
-            {
-                float x = startX + c * tileW;
-                g.DrawLine(pen, x, startY, x, startY + rows * tileH);
-            }
-
-            // خطوط افقی
+            using var pen = new Pen(gridColor);
             for (int r = 0; r <= rows; r++)
             {
-                float y = startY + r * tileH;
-                g.DrawLine(pen, startX, y, startX + cols * tileW, y);
+                float y = areaY + r * dsH;
+                g.DrawLine(pen, areaX, y, areaX + displayW, y);
             }
-        }
-
-        private void RenderDraggingTile(Graphics g, Point scroll, float scale)
-        {
-            var db = dragBitmap;
-            if (db == null) return; // محافظت در برابر null
-
-            int cols = Math.Max(1, tileSet.Columns);
-            int rows = Math.Max(1, tileSet.Rows);
-
-            float tileW = tileSet.TileWidth * scale;
-            float tileH = tileSet.TileHeight * scale;
-
-            if (tileW <= 0 || tileH <= 0) return;
-
-            int col = Math.Max(0, (int)((lastMouse.X - scroll.X - 8f) / tileW));
-            int row = Math.Max(0, (int)((lastMouse.Y - scroll.Y - panelTop.Height - 8f) / tileH));
-            col = Math.Min(col, cols - 1);
-            row = Math.Min(row, rows - 1);
-
-            int gx = (int)Math.Round(col * tileW + scroll.X + 8f);
-            int gy = (int)Math.Round(row * tileH + scroll.Y + panelTop.Height + 8f);
-
-            var cm = new ColorMatrix();
-            cm.Matrix33 = 0.6f;
-            using var ia = new ImageAttributes();
-            ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
-
-            g.DrawImage(db,
-                new Rectangle(gx, gy, (int)Math.Round(tileW), (int)Math.Round(tileH)),
-                0, 0, db.Width, db.Height,
-                GraphicsUnit.Pixel, ia);
-
-            g.DrawRectangle(Pens.Cyan, gx, gy, (int)Math.Round(tileW), (int)Math.Round(tileH));
-        }
-
-        private void RenderFallback(Graphics g, Point scroll)
-        {
-            // Fallback: رندر tile به tile
-            int cols = Math.Max(1, tileSet.Columns);
-            int rows = Math.Max(1, tileSet.Rows);
-
-            float tileW = tileSet.TileWidth * (zoomPercent / 100f);
-            float tileH = tileSet.TileHeight * (zoomPercent / 100f);
-
-            if (tileW <= 0 || tileH <= 0) return;
-
-            // فقط tileهای قابل مشاهده را رندر کن
-            Rectangle viewport = panelTileset.ClientRectangle;
-            viewport.Offset(-scroll.X, -scroll.Y);
-
-            int firstCol = Math.Max(0, (int)Math.Floor((viewport.Left - 8f) / tileW));
-            int lastCol = Math.Min(cols - 1, (int)Math.Ceiling((viewport.Right - 8f) / tileW));
-            int firstRow = Math.Max(0, (int)Math.Floor((viewport.Top - panelTop.Height - 8f) / tileH));
-            int lastRow = Math.Min(rows - 1, (int)Math.Ceiling((viewport.Bottom - panelTop.Height - 8f) / tileH));
-
-            for (int row = firstRow; row <= lastRow; row++)
+            for (int c = 0; c <= cols; c++)
             {
-                for (int col = firstCol; col <= lastCol; col++)
-                {
-                    int i = row * cols + col;
-                    if (i >= tileSet.Tiles.Count) continue;
-
-                    float x = col * tileW + scroll.X + 8f;
-                    float y = row * tileH + scroll.Y + panelTop.Height + 8f;
-
-                    try
-                    {
-                        var tileBmp = tileSet.GetCachedTileBitmap(i);
-                        if (tileBmp != null)
-                            g.DrawImage(tileBmp, new RectangleF(x, y, tileW, tileH));
-                    }
-                    catch
-                    {
-                        // ignore
-                    }
-                }
+                float x = areaX + c * dsW;
+                g.DrawLine(pen, x, areaY, x, areaY + displayH);
             }
         }
+        return;
+    }
+
+    // ***** حالت sliced: استفاده از composite bitmap *****
+    try
+    {
+        // دریافت composite bitmap (یک‌بار ساخته می‌شود و کش می‌شود)
+        var composite = tileSet.GetCompositeBitmap();
+        
+        float scale = zoomPercent / 100f;
+        float destWidth = composite.Width * scale;
+        float destHeight = composite.Height * scale;
+        
+        // ***** فقط یک DrawImage برای کل tileset! *****
+        g.DrawImage(composite, 
+            scroll.X + 8f, 
+            scroll.Y + panelTop.Height + 8f,
+            destWidth, destHeight);
+        
+        // رندر گرید روی composite (اگر نیاز است)
+        if (showGrid)
+        {
+            RenderGridOverlay(g, scroll, scale);
+        }
+    }
+    catch (Exception ex)
+    {
+        Debug.WriteLine($"خطا در رندر composite: {ex.Message}");
+        // Fallback به رندر قدیمی
+        RenderFallback(g, scroll);
+    }
+}
+
+    // رندر tile در حال drag
+    if (isDragging && dragBitmap != null)
+    {
+        int col = Math.Max(0, (int)((lastMouse.X - scroll.X - 8f) / dsW));
+        int row = Math.Max(0, (int)((lastMouse.Y - scroll.Y - panelTop.Height - 8f) / dsH));
+        col = Math.Min(col, cols - 1);
+        row = Math.Min(row, rows - 1);
+
+        int gx = (int)Math.Round(col * dsW + scroll.X + 8f);
+        int gy = (int)Math.Round(row * dsH + scroll.Y + panelTop.Height + 8f);
+
+        var cm = new ColorMatrix(); 
+        cm.Matrix33 = 0.6f;
+        var ia = new ImageAttributes(); 
+        ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+        
+        g.DrawImage(dragBitmap, 
+            new Rectangle(gx, gy, (int)Math.Round(dsW), (int)Math.Round(dsH)),
+            0, 0, dragBitmap.Width, dragBitmap.Height, 
+            GraphicsUnit.Pixel, ia);
+            
+        g.DrawRectangle(Pens.Cyan, gx, gy, (int)Math.Round(dsW), (int)Math.Round(dsH));
+    }
+       sw.Stop();
+    if (sw.ElapsedMilliseconds > 16) // بیش از 60 FPS
+    {
+        Debug.WriteLine($"رندر کند: {sw.ElapsedMilliseconds}ms - Tileها: {tileSet.Tiles.Count}");
+    }
+}
 
         private int HitTestTileIndex(Point clientPoint)
         {
@@ -779,8 +657,6 @@ namespace TilesetEditor
             float dsW = tileW * (zoomPercent / 100f);
             float dsH = tileH * (zoomPercent / 100f);
 
-            if (dsW <= 0f || dsH <= 0f) return -1;
-
             float x = clientPoint.X - scroll.X - 8f;
             float y = clientPoint.Y - scroll.Y - panelTop.Height - 8f;
             if (x < 0 || y < 0) return -1;
@@ -792,7 +668,7 @@ namespace TilesetEditor
         }
         #endregion
 
-        #region Drag / Swap
+        #region Drag / Swap (start after threshold) - only when sliced
         private void PanelTileset_MouseDown(object? sender, MouseEventArgs e)
         {
             if (!isSliced) return;
@@ -858,7 +734,6 @@ namespace TilesetEditor
                 var action = new Actions.SwapTileImagesAction(tileSet, dragIndex, target);
                 undo.Do(action);
                 tileSet.RebuildTiles();
-                tileSet.InvalidateComposite(); // اضافه کردن این خط
                 UpdateScrollSize();
                 MarkDirty();
             }
@@ -877,7 +752,7 @@ namespace TilesetEditor
         }
         #endregion
 
-        #region Selection & Context menu
+        #region Selection & Context menu (only when sliced)
         private void PanelTileset_MouseDoubleClick(object? sender, MouseEventArgs e)
         {
             if (!isSliced) return;
@@ -906,7 +781,7 @@ namespace TilesetEditor
         }
         #endregion
 
-        #region Context actions
+        #region Context actions (copy/paste/rotate/flip/delete/cut) - only when sliced
         private void MiCopy_Click(object? sender, EventArgs e)
         {
             if (!isSliced) return;
@@ -927,15 +802,15 @@ namespace TilesetEditor
             clipboardBitmap = tileSet.GetCachedTileBitmap(lastContextIndex);
             clipboardIndex = lastContextIndex;
 
-            // then clear the source tile
+            // then clear the source tile by applying a transparent bitmap of tile size
             var rect = tileSet.Tiles[lastContextIndex].SourceRect;
             using var empty = new Bitmap(Math.Max(1, rect.Width), Math.Max(1, rect.Height), PixelFormat.Format32bppArgb);
             using (var g = Graphics.FromImage(empty)) g.Clear(Color.Transparent);
 
             var action = new Actions.TileImageAction(tileSet, lastContextIndex, empty);
             undo.Do(action);
-            tileSet.InvalidateCache();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
+            tileSet.InvalidateCache(); // کش را باطل کن
+            tileSet.InvalidateComposite(); // ***** اضافه کردن این خط *****
             tileSet.RebuildTiles();
             panelTileset.Invalidate();
             MarkDirty();
@@ -947,10 +822,11 @@ namespace TilesetEditor
             if (!isSliced) return;
             if (lastContextIndex < 0 || clipboardBitmap == null) return;
 
+            // Paste: draw clipboardBitmap into the tile's SourceRect on the underlying image.
             var action = new Actions.TileImageAction(tileSet, lastContextIndex, clipboardBitmap);
             undo.Do(action);
-            tileSet.InvalidateCache();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
+            tileSet.InvalidateCache(); // کش را باطل کن
+            tileSet.InvalidateComposite(); // ***** اضافه کردن این خط *****
             tileSet.RebuildTiles();
             panelTileset.Invalidate();
             MarkDirty();
@@ -966,8 +842,8 @@ namespace TilesetEditor
             bmp.RotateFlip(RotateFlipType.Rotate90FlipNone);
             var action = new Actions.TileImageAction(tileSet, lastContextIndex, bmp);
             undo.Do(action);
-            tileSet.InvalidateCache();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
+            tileSet.InvalidateCache(); // کش را باطل کن
+            tileSet.InvalidateComposite(); // ***** اضافه کردن این خط *****
             tileSet.RebuildTiles();
             panelTileset.Invalidate();
             MarkDirty();
@@ -983,8 +859,8 @@ namespace TilesetEditor
             bmp.RotateFlip(RotateFlipType.RotateNoneFlipX);
             var action = new Actions.TileImageAction(tileSet, lastContextIndex, bmp);
             undo.Do(action);
-            tileSet.InvalidateCache();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
+            tileSet.InvalidateCache(); // کش را باطل کن
+            tileSet.InvalidateComposite(); // ***** اضافه کردن این خط *****
             tileSet.RebuildTiles();
             panelTileset.Invalidate();
             MarkDirty();
@@ -1000,8 +876,8 @@ namespace TilesetEditor
             using (var g = Graphics.FromImage(empty)) g.Clear(Color.Transparent);
             var action = new Actions.TileImageAction(tileSet, lastContextIndex, empty);
             undo.Do(action);
-            tileSet.InvalidateCache();
-            tileSet.InvalidateComposite(); // اضافه کردن این خط
+            tileSet.InvalidateCache(); // کش را باطل کن
+            tileSet.InvalidateComposite(); // ***** اضافه کردن این خط *****
             tileSet.RebuildTiles();
             panelTileset.Invalidate();
             MarkDirty();
@@ -1052,8 +928,6 @@ namespace TilesetEditor
                 {
                     var action = new Actions.TileImageAction(tileSet, idx, clipboardBitmap);
                     undo.Do(action);
-                    tileSet.InvalidateCache();
-                    tileSet.InvalidateComposite(); // اضافه کردن این خط
                     tileSet.RebuildTiles();
                     panelTileset.Invalidate();
                     MarkDirty();
@@ -1071,8 +945,6 @@ namespace TilesetEditor
                         bmp.RotateFlip(RotateFlipType.Rotate90FlipNone);
                         var action = new Actions.TileImageAction(tileSet, selectedIndex, bmp);
                         undo.Do(action);
-                        tileSet.InvalidateCache();
-                        tileSet.InvalidateComposite(); // اضافه کردن این خط
                         tileSet.RebuildTiles();
                         panelTileset.Invalidate();
                         MarkDirty();
@@ -1091,8 +963,6 @@ namespace TilesetEditor
                         bmp.RotateFlip(RotateFlipType.RotateNoneFlipX);
                         var action = new Actions.TileImageAction(tileSet, selectedIndex, bmp);
                         undo.Do(action);
-                        tileSet.InvalidateCache();
-                        tileSet.InvalidateComposite(); // اضافه کردن این خط
                         tileSet.RebuildTiles();
                         panelTileset.Invalidate();
                         MarkDirty();
@@ -1142,6 +1012,7 @@ namespace TilesetEditor
             btnSave.Enabled = tileSet.Image != null;
             btnSaveAs.Enabled = tileSet.Image != null;
 
+            // tile size fields enabled only when preset == Custom
             numTileW.Enabled = IsPresetCustom();
             numTileH.Enabled = IsPresetCustom();
         }
@@ -1152,23 +1023,97 @@ namespace TilesetEditor
             if (isDirty)
             {
                 var r = MessageBox.Show(
-                    "You have unsaved changes. Exit and discard changes?",
-                    "Unsaved changes",
-                    MessageBoxButtons.YesNo,
+                    "You have unsaved changes. Exit and discard changes?", 
+                    "Unsaved changes", 
+                    MessageBoxButtons.YesNo, 
                     MessageBoxIcon.Warning);
-
-                if (r != DialogResult.Yes)
-                {
-                    e.Cancel = true;
-                    return;
+                    
+                if (r != DialogResult.Yes) 
+                { 
+                    e.Cancel = true; 
+                    return; 
                 }
             }
-
+            
+            // آزاد کردن منابع bitmap
             clipboardBitmap?.Dispose();
             dragBitmap?.Dispose();
-            tileSet?.Image?.Dispose();
-
+            
+            // آزاد کردن تصویر اصلی tileset
+            if (tileSet?.Image != null)
+            {
+                tileSet.Image.Dispose();
+                tileSet.Image = null;
+            }
+            
+            // آزاد کردن کش tileها (اگر نیاز است)
+            // از reflection استفاده نکنید - پیچیده است و نیاز نیست
+            
             base.OnFormClosing(e);
         }
+                private void RenderGridOverlay(Graphics g, Point scroll, float scale)
+        {
+            int cols = Math.Max(1, tileSet.Columns);
+            int rows = Math.Max(1, tileSet.Rows);
+            float tileW = tileSet.TileWidth * scale;
+            float tileH = tileSet.TileHeight * scale;
+            
+            if (tileW < 3 || tileH < 3) return; // اگر tileها خیلی کوچک هستند، گرید نکش
+            
+            using var pen = new Pen(Color.FromArgb(150, gridColor));
+            
+            float startX = scroll.X + 8f;
+            float startY = scroll.Y + panelTop.Height + 8f;
+            
+            // خطوط عمودی
+            for (int c = 0; c <= cols; c++)
+            {
+                float x = startX + c * tileW;
+                g.DrawLine(pen, x, startY, x, startY + rows * tileH);
+            }
+            
+            // خطوط افقی
+            for (int r = 0; r <= rows; r++)
+            {
+                float y = startY + r * tileH;
+                g.DrawLine(pen, startX, y, startX + cols * tileW, y);
+            }
+        }
+
+        private void RenderFallback(Graphics g, Point scroll)
+        {
+            // Fallback به رندر tile به tile (در صورت خطا در composite)
+            int cols = Math.Max(1, tileSet.Columns);
+            int rows = Math.Max(1, tileSet.Rows);
+            
+            float tileW = tileSet.TileWidth * (zoomPercent / 100f);
+            float tileH = tileSet.TileHeight * (zoomPercent / 100f);
+            
+            // فقط tileهای قابل مشاهده را رندر کن
+            Rectangle viewport = panelTileset.ClientRectangle;
+            viewport.Offset(-scroll.X, -scroll.Y);
+            
+            int firstCol = Math.Max(0, (int)Math.Floor((viewport.Left - 8f) / tileW));
+            int lastCol = Math.Min(cols - 1, (int)Math.Ceiling((viewport.Right - 8f) / tileW));
+            int firstRow = Math.Max(0, (int)Math.Floor((viewport.Top - panelTop.Height - 8f) / tileH));
+            int lastRow = Math.Min(rows - 1, (int)Math.Ceiling((viewport.Bottom - panelTop.Height - 8f) / tileH));
+            
+            for (int row = firstRow; row <= lastRow; row++)
+            {
+                for (int col = firstCol; col <= lastCol; col++)
+                {
+                    int i = row * cols + col;
+                    if (i >= tileSet.Tiles.Count) continue;
+                    
+                    float x = col * tileW + scroll.X + 8f;
+                    float y = row * tileH + scroll.Y + panelTop.Height + 8f;
+                    
+                    var tileBmp = tileSet.GetCachedTileBitmap(i);
+                    if (tileBmp != null)
+                        g.DrawImage(tileBmp, new RectangleF(x, y, tileW, tileH));
+                }
+            }
+        }
+      
     }
 }
